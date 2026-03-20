@@ -47,17 +47,17 @@ const enquirySchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now },
 });
 
-const settingsSchema = new mongoose.Schema({
-  phone: String,
-  email: String,
-  address: String,
+const contactsSchema = new mongoose.Schema({
+  phone: { type: String, default: "" },
+  email: { type: String, default: "" },
+  address: { type: String, default: "" },
 });
 
 const SliderModel = mongoose.model("Slider", sliderSchema);
 const TrustedModel = mongoose.model("Trusted", trustedSchema);
 const ProjectModel = mongoose.model("Project", projectSchema);
 const EnquiryModel = mongoose.model("Enquiry", enquirySchema);
-const SettingsModel = mongoose.model("Settings", settingsSchema);
+const ContactsModel = mongoose.model("Contacts", contactsSchema);
 
 // -----------------------------
 // EXPRESS SETUP
@@ -134,30 +134,38 @@ app.get("/api/projects", async (req, res) => {
   res.json(await ProjectModel.find());
 });
 
-app.get("/api/settings", async (req, res) => {
-  const settings = await SettingsModel.findOne();
-  res.json(settings);
+app.get("/api/contacts", async (req, res) => {
+  let contacts = await ContactsModel.findOne();
+
+  if (!contacts) {
+    contacts = await ContactsModel.create({
+      phone: "",
+      email: "",
+      address: "",
+    });
+  }
+
+  res.json(contacts);
 });
 
 // -----------------------------
 // ADMIN: SLIDER UPLOAD + DELETE
 // -----------------------------
-app.post(
-  "/api/slider",
-  authMiddleware,
-  upload.single("image"),
-  async (req, res) => {
-    const file = req.file;
-    const { title } = req.body;
+app.post("/api/contacts", authMiddleware, async (req, res) => {
+  let contacts = await ContactsModel.findOne();
 
-    if (!file) return res.status(400).json({ message: "No file uploaded" });
-
-    const url = file.path; // Cloudinary URL
-
-    const doc = await SliderModel.create({ url, title });
-    res.json(doc);
+  if (!contacts) {
+    contacts = new ContactsModel(req.body);
+  } else {
+    contacts.phone = req.body.phone;
+    contacts.email = req.body.email;
+    contacts.address = req.body.address;
   }
-);
+
+  await contacts.save();
+  res.json({ success: true, contacts });
+});
+
 
 app.delete("/api/slider/:id", authMiddleware, async (req, res) => {
   await SliderModel.findByIdAndDelete(req.params.id);
