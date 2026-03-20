@@ -3,15 +3,18 @@ import cors from "cors";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import multer from "multer";
-import path from "path";
-import fs from "fs";
 import mongoose from "mongoose";
+import { CloudinaryStorage } from "multer-storage-cloudinary";
+import dotenv from "dotenv";
+dotenv.config();
+import cloudinary from "./cloudinary";
+
+
 
 // -----------------------------
 // MONGODB CONNECTION
 // -----------------------------
-mongoose
-  .connect("mongodb://127.0.0.1:27017/realestate")
+mongoose.connect(process.env.MONGO_URL!)
   .then(() => console.log("MongoDB connected"))
   .catch((err) => console.error("MongoDB error:", err));
 
@@ -64,21 +67,14 @@ app.use(cors());
 app.use(express.json());
 
 // -----------------------------
-// FILE UPLOAD SETUP
+// CLOUDINARY STORAGE
 // -----------------------------
-const uploadsDir = path.join(__dirname, "..", "public", "uploads");
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
-}
-
-app.use("/uploads", express.static(uploadsDir));
-
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, uploadsDir),
-  filename: (req, file, cb) => {
-    const unique = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    cb(null, unique + path.extname(file.originalname));
-  },
+const storage = new CloudinaryStorage({
+  cloudinary,
+  params: async (req, file) => ({
+    folder: "real-estate",
+    resource_type: "auto",
+  }),
 });
 
 const upload = multer({ storage });
@@ -151,12 +147,14 @@ app.post(
   authMiddleware,
   upload.single("image"),
   async (req, res) => {
-    const file : Express.Multer.File | undefined = req.file;
+    const file = req.file;
     const { title } = req.body;
 
-    const url = `http://localhost:5000/uploads/${file?.filename}`;
-    const doc = await SliderModel.create({ url, title });
+    if (!file) return res.status(400).json({ message: "No file uploaded" });
 
+    const url = file.path; // Cloudinary URL
+
+    const doc = await SliderModel.create({ url, title });
     res.json(doc);
   }
 );
@@ -174,12 +172,14 @@ app.post(
   authMiddleware,
   upload.single("logo"),
   async (req, res) => {
-    const file: Express.Multer.File | undefined = req.file;
+    const file = req.file;
     const { name } = req.body;
 
-    const logoUrl = `http://localhost:5000/uploads/${file?.filename}`;
-    const doc = await TrustedModel.create({ name, logoUrl });
+    if (!file) return res.status(400).json({ message: "No file uploaded" });
 
+    const logoUrl = file.path; // Cloudinary URL
+
+    const doc = await TrustedModel.create({ name, logoUrl });
     res.json(doc);
   }
 );
@@ -200,7 +200,9 @@ app.post(
     const file = req.file;
     const { title, description, price, location } = req.body;
 
-    const image = `http://localhost:5000/uploads/${file?.filename}`;
+    if (!file) return res.status(400).json({ message: "No file uploaded" });
+
+    const image = file.path; // Cloudinary URL
 
     const doc = await ProjectModel.create({
       title,
@@ -213,15 +215,6 @@ app.post(
     res.json(doc);
   }
 );
-
-
-
-
-app.delete("/api/projects/:id", authMiddleware, async (req, res) => {
-  await ProjectModel.findByIdAndDelete(req.params.id);
-  res.json({ message: "Deleted" });
-});
-
 
 app.put(
   "/api/projects/:id",
@@ -239,8 +232,8 @@ app.put(
     };
 
     if (file) {
-  updateData.image = `http://localhost:5000/uploads/${file.filename}`;
-}
+      updateData.image = file.path; // Cloudinary URL
+    }
 
     const updated = await ProjectModel.findByIdAndUpdate(
       req.params.id,
@@ -252,7 +245,10 @@ app.put(
   }
 );
 
-
+app.delete("/api/projects/:id", authMiddleware, async (req, res) => {
+  await ProjectModel.findByIdAndDelete(req.params.id);
+  res.json({ message: "Deleted" });
+});
 
 // -----------------------------
 // CONTACT FORM SUBMISSION
@@ -270,24 +266,6 @@ app.get("/api/admin/enquiries", authMiddleware, async (req, res) => {
   res.json(items);
 });
 
-// -----------------------------
-// ADMIN: UPDATE CONTACT SETTINGS
-// -----------------------------
-app.post("/api/admin/settings", authMiddleware, async (req, res) => {
-  let settings = await SettingsModel.findOne();
-
-  if (!settings) {
-    settings = await SettingsModel.create(req.body);
-  } else {
-    settings.phone = req.body.phone;
-    settings.email = req.body.email;
-    settings.address = req.body.address;
-    await settings.save();
-  }
-
-  res.json(settings);
-});
-
 // DELETE single enquiry
 app.delete("/api/admin/enquiries/:id", authMiddleware, async (req, res) => {
   try {
@@ -302,21 +280,18 @@ app.delete("/api/admin/enquiries/:id", authMiddleware, async (req, res) => {
 app.post("/api/admin/enquiries/delete-multiple", async (req, res) => {
   try {
     const { ids } = req.body;
-    console.log("BODY RECEIVED:", req.body)
+
     if (!ids || !Array.isArray(ids)) {
       return res.status(400).json({ error: "Invalid ids array" });
     }
 
     await EnquiryModel.deleteMany({ _id: { $in: ids } });
-    
+
     res.json({ success: true });
   } catch (err) {
-    console.error("Delete multiple error:", err);
     res.status(500).json({ error: "Failed to delete enquiries" });
   }
 });
-
-
 
 // -----------------------------
 // START SERVER

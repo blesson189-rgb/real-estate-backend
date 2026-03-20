@@ -17,14 +17,15 @@ const cors_1 = __importDefault(require("cors"));
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const multer_1 = __importDefault(require("multer"));
-const path_1 = __importDefault(require("path"));
-const fs_1 = __importDefault(require("fs"));
 const mongoose_1 = __importDefault(require("mongoose"));
+const multer_storage_cloudinary_1 = require("multer-storage-cloudinary");
+const dotenv_1 = __importDefault(require("dotenv"));
+dotenv_1.default.config();
+const cloudinary_1 = __importDefault(require("./cloudinary"));
 // -----------------------------
 // MONGODB CONNECTION
 // -----------------------------
-mongoose_1.default
-    .connect("mongodb://127.0.0.1:27017/realestate")
+mongoose_1.default.connect(process.env.MONGO_URL)
     .then(() => console.log("MongoDB connected"))
     .catch((err) => console.error("MongoDB error:", err));
 // -----------------------------
@@ -69,19 +70,16 @@ const app = (0, express_1.default)();
 app.use((0, cors_1.default)());
 app.use(express_1.default.json());
 // -----------------------------
-// FILE UPLOAD SETUP
+// CLOUDINARY STORAGE
 // -----------------------------
-const uploadsDir = path_1.default.join(__dirname, "..", "public", "uploads");
-if (!fs_1.default.existsSync(uploadsDir)) {
-    fs_1.default.mkdirSync(uploadsDir, { recursive: true });
-}
-app.use("/uploads", express_1.default.static(uploadsDir));
-const storage = multer_1.default.diskStorage({
-    destination: (req, file, cb) => cb(null, uploadsDir),
-    filename: (req, file, cb) => {
-        const unique = Date.now() + "-" + Math.round(Math.random() * 1e9);
-        cb(null, unique + path_1.default.extname(file.originalname));
-    },
+const storage = new multer_storage_cloudinary_1.CloudinaryStorage({
+    cloudinary: cloudinary_1.default,
+    params: (req, file) => __awaiter(void 0, void 0, void 0, function* () {
+        return ({
+            folder: "real-estate",
+            resource_type: "auto",
+        });
+    }),
 });
 const upload = (0, multer_1.default)({ storage });
 // -----------------------------
@@ -139,7 +137,9 @@ app.get("/api/settings", (req, res) => __awaiter(void 0, void 0, void 0, functio
 app.post("/api/slider", authMiddleware, upload.single("image"), (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const file = req.file;
     const { title } = req.body;
-    const url = `http://localhost:5000/uploads/${file === null || file === void 0 ? void 0 : file.filename}`;
+    if (!file)
+        return res.status(400).json({ message: "No file uploaded" });
+    const url = file.path; // Cloudinary URL
     const doc = yield SliderModel.create({ url, title });
     res.json(doc);
 }));
@@ -153,7 +153,9 @@ app.delete("/api/slider/:id", authMiddleware, (req, res) => __awaiter(void 0, vo
 app.post("/api/trusted", authMiddleware, upload.single("logo"), (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const file = req.file;
     const { name } = req.body;
-    const logoUrl = `http://localhost:5000/uploads/${file === null || file === void 0 ? void 0 : file.filename}`;
+    if (!file)
+        return res.status(400).json({ message: "No file uploaded" });
+    const logoUrl = file.path; // Cloudinary URL
     const doc = yield TrustedModel.create({ name, logoUrl });
     res.json(doc);
 }));
@@ -167,7 +169,9 @@ app.delete("/api/trusted/:id", authMiddleware, (req, res) => __awaiter(void 0, v
 app.post("/api/projects", authMiddleware, upload.single("image"), (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const file = req.file;
     const { title, description, price, location } = req.body;
-    const image = `http://localhost:5000/uploads/${file === null || file === void 0 ? void 0 : file.filename}`;
+    if (!file)
+        return res.status(400).json({ message: "No file uploaded" });
+    const image = file.path; // Cloudinary URL
     const doc = yield ProjectModel.create({
         title,
         description,
@@ -176,10 +180,6 @@ app.post("/api/projects", authMiddleware, upload.single("image"), (req, res) => 
         image,
     });
     res.json(doc);
-}));
-app.delete("/api/projects/:id", authMiddleware, (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    yield ProjectModel.findByIdAndDelete(req.params.id);
-    res.json({ message: "Deleted" });
 }));
 app.put("/api/projects/:id", authMiddleware, upload.single("image"), (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const file = req.file;
@@ -191,10 +191,14 @@ app.put("/api/projects/:id", authMiddleware, upload.single("image"), (req, res) 
         location,
     };
     if (file) {
-        updateData.image = `http://localhost:5000/uploads/${file.filename}`;
+        updateData.image = file.path; // Cloudinary URL
     }
     const updated = yield ProjectModel.findByIdAndUpdate(req.params.id, updateData, { new: true });
     res.json(updated);
+}));
+app.delete("/api/projects/:id", authMiddleware, (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    yield ProjectModel.findByIdAndDelete(req.params.id);
+    res.json({ message: "Deleted" });
 }));
 // -----------------------------
 // CONTACT FORM SUBMISSION
@@ -210,22 +214,6 @@ app.get("/api/admin/enquiries", authMiddleware, (req, res) => __awaiter(void 0, 
     const items = yield EnquiryModel.find().sort({ createdAt: -1 });
     res.json(items);
 }));
-// -----------------------------
-// ADMIN: UPDATE CONTACT SETTINGS
-// -----------------------------
-app.post("/api/admin/settings", authMiddleware, (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    let settings = yield SettingsModel.findOne();
-    if (!settings) {
-        settings = yield SettingsModel.create(req.body);
-    }
-    else {
-        settings.phone = req.body.phone;
-        settings.email = req.body.email;
-        settings.address = req.body.address;
-        yield settings.save();
-    }
-    res.json(settings);
-}));
 // DELETE single enquiry
 app.delete("/api/admin/enquiries/:id", authMiddleware, (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
@@ -240,7 +228,6 @@ app.delete("/api/admin/enquiries/:id", authMiddleware, (req, res) => __awaiter(v
 app.post("/api/admin/enquiries/delete-multiple", (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const { ids } = req.body;
-        console.log("BODY RECEIVED:", req.body);
         if (!ids || !Array.isArray(ids)) {
             return res.status(400).json({ error: "Invalid ids array" });
         }
@@ -248,7 +235,6 @@ app.post("/api/admin/enquiries/delete-multiple", (req, res) => __awaiter(void 0,
         res.json({ success: true });
     }
     catch (err) {
-        console.error("Delete multiple error:", err);
         res.status(500).json({ error: "Failed to delete enquiries" });
     }
 }));
