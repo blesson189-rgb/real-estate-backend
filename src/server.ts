@@ -53,11 +53,17 @@ const contactsSchema = new mongoose.Schema({
   address: { type: String, default: "" },
 });
 
+const aboutSchema = new mongoose.Schema({
+  title: String,
+  content: String,
+});
+
 const SliderModel = mongoose.model("Slider", sliderSchema);
 const TrustedModel = mongoose.model("Trusted", trustedSchema);
 const ProjectModel = mongoose.model("Project", projectSchema);
 const EnquiryModel = mongoose.model("Enquiry", enquirySchema);
 const ContactsModel = mongoose.model("Contacts", contactsSchema);
+const AboutModel = mongoose.model("About", aboutSchema);
 
 // -----------------------------
 // EXPRESS SETUP
@@ -300,6 +306,40 @@ app.post("/api/admin/enquiries/delete-multiple", async (req, res) => {
     res.status(500).json({ error: "Failed to delete enquiries" });
   }
 });
+
+// -----------------------------
+// About Us
+// -----------------------------
+
+app.get("/api/about", async (req, res) => {
+  let about = await AboutModel.findOne();
+  if (!about) {
+    about = await AboutModel.create({
+      title: "About Property Pulse",
+      content: "",
+    });
+  }
+  res.json(about);
+});
+
+
+app.post("/api/admin/about", authMiddleware, async (req, res) => {
+  const { title, content } = req.body;
+
+  let about = await AboutModel.findOne();
+  if (!about) {
+    about = new AboutModel({ title, content });
+  } else {
+    about.title = title;
+    about.content = content;
+  }
+
+  await about.save();
+  res.json({ success: true, about });
+});
+
+
+
 
 // -----------------------------
 // START SERVER
