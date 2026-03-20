@@ -155,8 +155,32 @@ app.get("/api/contacts", async (req, res) => {
 });
 
 // -----------------------------
+// ADMIN: SLIDER UPLOAD
+// -----------------------------
+app.post(
+  "/api/slider",
+  authMiddleware,
+  upload.single("image"),
+  async (req, res) => {
+    const file = req.file;
+    const { title } = req.body;
+
+    if (!file) {
+      return res.status(400).json({ message: "No file uploaded" });
+    }
+
+    const url = file.path; // Cloudinary URL
+
+    const doc = await SliderModel.create({ url, title });
+    res.json(doc);
+  }
+);
+
+
+// -----------------------------
 // ADMIN: SLIDER UPLOAD + DELETE
 // -----------------------------
+
 app.post("/api/contacts", authMiddleware, async (req, res) => {
   let contacts = await ContactsModel.findOne();
 
