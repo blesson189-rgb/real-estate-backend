@@ -53,16 +53,16 @@ const enquirySchema = new mongoose_1.default.Schema({
     message: String,
     createdAt: { type: Date, default: Date.now },
 });
-const settingsSchema = new mongoose_1.default.Schema({
-    phone: String,
-    email: String,
-    address: String,
+const contactsSchema = new mongoose_1.default.Schema({
+    phone: { type: String, default: "" },
+    email: { type: String, default: "" },
+    address: { type: String, default: "" },
 });
 const SliderModel = mongoose_1.default.model("Slider", sliderSchema);
 const TrustedModel = mongoose_1.default.model("Trusted", trustedSchema);
 const ProjectModel = mongoose_1.default.model("Project", projectSchema);
 const EnquiryModel = mongoose_1.default.model("Enquiry", enquirySchema);
-const SettingsModel = mongoose_1.default.model("Settings", settingsSchema);
+const ContactsModel = mongoose_1.default.model("Contacts", contactsSchema);
 // -----------------------------
 // EXPRESS SETUP
 // -----------------------------
@@ -127,21 +127,32 @@ app.get("/api/trusted", (req, res) => __awaiter(void 0, void 0, void 0, function
 app.get("/api/projects", (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     res.json(yield ProjectModel.find());
 }));
-app.get("/api/settings", (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    const settings = yield SettingsModel.findOne();
-    res.json(settings);
+app.get("/api/contacts", (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    let contacts = yield ContactsModel.findOne();
+    if (!contacts) {
+        contacts = yield ContactsModel.create({
+            phone: "",
+            email: "",
+            address: "",
+        });
+    }
+    res.json(contacts);
 }));
 // -----------------------------
 // ADMIN: SLIDER UPLOAD + DELETE
 // -----------------------------
-app.post("/api/slider", authMiddleware, upload.single("image"), (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    const file = req.file;
-    const { title } = req.body;
-    if (!file)
-        return res.status(400).json({ message: "No file uploaded" });
-    const url = file.path; // Cloudinary URL
-    const doc = yield SliderModel.create({ url, title });
-    res.json(doc);
+app.post("/api/contacts", authMiddleware, (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    let contacts = yield ContactsModel.findOne();
+    if (!contacts) {
+        contacts = new ContactsModel(req.body);
+    }
+    else {
+        contacts.phone = req.body.phone;
+        contacts.email = req.body.email;
+        contacts.address = req.body.address;
+    }
+    yield contacts.save();
+    res.json({ success: true, contacts });
 }));
 app.delete("/api/slider/:id", authMiddleware, (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     yield SliderModel.findByIdAndDelete(req.params.id);
